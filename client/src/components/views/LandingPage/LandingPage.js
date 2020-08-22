@@ -44,19 +44,6 @@ function LandingPage() {
     });
   };
 
-  const renderCards = Products.map((product, index) => {
-    return (
-      <Col lg={6} md={8} xs={24}>
-        <Card
-          hoverable={true}
-          cover={<ImageSlider key={index} images={product.images} />}
-        >
-          <Meta title={product.title} description={`$${product.price}`} />
-        </Card>
-      </Col>
-    );
-  });
-
   const onLoadMore = () => {
     let skip = Skip + Limit;
     const variables = {
@@ -115,6 +102,24 @@ function LandingPage() {
     setSkip(0);
     getProducts(variables);
   };
+
+  // show products by using map
+  const renderCards = Products.map((product, index) => {
+    return (
+      <Col lg={6} md={8} xs={24}>
+        <Card
+          hoverable={true}
+          cover={
+            <a href={`/product/${product._id}`}>
+              <ImageSlider key={index} images={product.images} />{' '}
+            </a>
+          }
+        >
+          <Meta title={product.title} description={`$${product.price}`} />
+        </Card>
+      </Col>
+    );
+  });
 
   return (
     <div style={{ width: '75%', margin: '3rem auto' }}>

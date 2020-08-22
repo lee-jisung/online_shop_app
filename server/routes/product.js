@@ -104,4 +104,24 @@ router.post('/getProducts', (req, res) => {
   }
 });
 
+//id=${productId}&type=single
+// id=123,123,123&type=array => id가 여러개일 때, type은 array로 들어옴
+// 이를 구분하기 위해 type=single, array로 요청할 때 각각 따로 처리
+router.get('/products_by_id', (req, res) => {
+  let productIds = req.query.id;
+  let type = req.query.type;
+
+  if (type === 'array') {
+  }
+
+  // find the product information belong to product's id
+  // $in method => productId가 여러개일 때 모두 찾아줌
+  Product.find({ _id: { $in: productIds } })
+    .populate('writer')
+    .exec((err, product) => {
+      if (err) return res.status(400).send(err);
+      return res.status(200).send(product);
+    });
+});
+
 module.exports = router;
