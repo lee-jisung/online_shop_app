@@ -7,6 +7,7 @@ function HistoryPage() {
     Axios.get('/api/users/getHistory').then(response => {
       if (response.data.success) {
         setHistory(response.data.history);
+        console.log(response.data.history);
       } else {
         alert('Fail to get History');
       }
@@ -23,6 +24,7 @@ function HistoryPage() {
         <thead>
           <tr>
             <th>Payment ID</th>
+            <th>Product Name</th>
             <th>Price</th>
             <th>Quantity</th>
             <th>Date of Purchase</th>
@@ -32,6 +34,7 @@ function HistoryPage() {
           {History.map(item => (
             <tr key={item.id}>
               <td>{item.paymentId}</td>
+              <td>{item.name}</td>
               <td>{item.price}</td>
               <td>{item.quantity}</td>
               <td>{item.dateOfPurchase}</td>
