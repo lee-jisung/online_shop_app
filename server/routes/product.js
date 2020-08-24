@@ -105,14 +105,24 @@ router.post('/getProducts', (req, res) => {
 });
 
 //id=${productId}&type=single
-// id=123,123,123&type=array => id가 여러개일 때, type은 array로 들어옴
-// 이를 구분하기 위해 type=single, array로 요청할 때 각각 따로 처리
+
+//user가 여러개의 product를 cart에 담아놓고, cartpage에 갔을 때,
+// id에 해당 product들의 id가 ,로 구분되어서 들어옴 (ex, 5f3fw3fs3f... , s3f2234234...)
+// => array에 대한 처리를 해야 함
 router.get('/products_by_id', (req, res) => {
   let productIds = req.query.id;
   let type = req.query.type;
 
+  // cartPage에 들어갔을 때, user가 cart에 담은 모든 product들의 id들을 가져와
+  // productIds에 저장
   if (type === 'array') {
+    let ids = req.query.id.split(',');
+    productIds = [];
+    productIds = ids.map(item => {
+      return item;
+    });
   }
+  console.log(productIds);
 
   // find the product information belong to product's id
   // $in method => productId가 여러개일 때 모두 찾아줌

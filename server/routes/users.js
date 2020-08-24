@@ -1,13 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { User } = require('../models/User');
-
+const { Product } = require('../models/Product');
 const { auth } = require('../middleware/auth');
+const { Payment } = require('../models/Payment');
+const async = require('async');
 
 //=================================
 //             User
 //=================================
 
+// user_action => request에 모든 정보들이 저장
+// component들을 이동할 때 마다 auth를 통과 => user들의 정보를 계속 redux store에
+// updqte할 수 있게 해주는 역할
 router.get('/auth', auth, (req, res) => {
   res.status(200).json({
     _id: req.user._id,
@@ -18,6 +23,8 @@ router.get('/auth', auth, (req, res) => {
     lastname: req.user.lastname,
     role: req.user.role,
     image: req.user.image,
+    cart: req.user.cart,
+    history: req.user.history,
   });
 });
 
@@ -76,11 +83,9 @@ router.get('/addToCart', auth, (req, res) => {
   User.findOne({ _id: req.user._id }, (err, userInfo) => {
     let duplicate = false;
 
-    console.log(userInfo);
-
     // item => user가 add To Cart한 product들이 들어있음
     userInfo.cart.forEach(item => {
-      if (item._id === req.query.productId) {
+      if (item.id == req.query.productId) {
         duplicate = true; // 중복으로 product를 add 했는지 여부를 확인
       }
     });
@@ -119,6 +124,137 @@ router.get('/addToCart', auth, (req, res) => {
         }
       );
     }
+  });
+});
+
+//when user click remove button, get product Id and
+// remove product from user collection (in cart fields)
+// user id를 찾고, pull method를 이용해서 cart fields에 들어가서
+// get url로 요청된 product의 id를 이용해서 (req.query._id) DB에서 삭제
+router.get('/removeFromCart', auth, (req, res) => {
+  User.findOneAndUpdate(
+    { _id: req.user._id },
+    { $pull: { cart: { id: req.query.id } } },
+    { new: true },
+    (err, userInfo) => {
+      let cart = userInfo.cart;
+      let array = cart.map(item => {
+        //login한 user의 cart에 있는 모든 item의 id가 array에 담김
+        return item.id;
+      });
+
+      // array에 담긴 id들을 이용해서 Product DB에서 찾음
+      // 찾아서 cartDetail정보와 login한 user의 cart정보를 return해줌
+      Product.find({ _id: { $in: array } })
+        .populate('writer')
+        .exec((err, cartDetail) => {
+          return res.status(200).json({ cartDetail, cart });
+        });
+    }
+  );
+});
+
+router.get('/userCartInfo', auth, (req, res) => {
+  // login한 user의 cart id들을 모두 array에 담음
+  User.findOne({ _id: req.user._id }, (err, userInfo) => {
+    let cart = userInfo.cart;
+    let array = cart.map(item => {
+      return item.id;
+    });
+
+    // cart id들을 모두 product에서 찾아서 cartdetail과 cart를 client로 보냄
+    Product.find({ _id: { $in: array } })
+      .populate('writer')
+      .exec((err, cartDetail) => {
+        if (err) return res.status(400).send(err);
+        return res.status(200).json({ success: true, cartDetail, cart });
+      });
+  });
+});
+
+router.post('/successBuy', auth, (req, res) => {
+  let history = [];
+  let transactionData = {};
+  // save Payment information inside user collection
+
+  req.body.cartDetail.forEach(item => {
+    history.push({
+      dateOfPurchase: Date.now(),
+      name: item.title,
+      id: item._id,
+      price: item.price,
+      quantity: item.quantity,
+      paymentId: req.body.paymentData.paymentID,
+    });
+  });
+
+  //save payment information that come from Paypal into Payment collection
+  transactionData.user = {
+    id: req.user._id,
+    name: req.user.name,
+    lastname: req.user.lastname,
+    email: req.user.email,
+  };
+  transactionData.data = req.body.paymentData;
+  transactionData.product = history;
+
+  User.findOneAndUpdate(
+    { _id: req.user._id },
+    // user collection에 history fields를 history로 새로 push하고
+    // cart를 empty array로 만듦
+    { $push: { history: history }, $set: { cart: [] } },
+    { new: true },
+    (err, user) => {
+      if (err) return res.json({ success: false, err });
+
+      const payment = new Payment(transactionData);
+      payment.save((err, doc) => {
+        if (err) return res.json({ success: false, err });
+
+        // Increase the amount of number for the sold information
+
+        //first we need to know how many product were sold in thie transaction
+        //for each of products
+
+        let products = [];
+        doc.product.forEach(item => {
+          products.push({ id: item.id, quantity: item.quantity });
+        });
+        // => product의 id가 1개면 Product.findOneAndUpdate로 sold정보를
+        // $inc를 사용해서 증가시킬 수 있지만 여러개 일 경우 불가능함
+        // 따라서 async를 npm에서 install 후 async.eachSeries를 이용해서 update를 할 수 있음
+        // products들에 대해서 (item, callback)을 매 원소마다 불러주는 듯
+        async.eachSeries(
+          products,
+          (item, callback) => {
+            Product.update(
+              { _id: item.id },
+              {
+                $inc: {
+                  sold: item.quantity,
+                },
+              },
+              { new: false },
+              callback
+            );
+          },
+          err => {
+            if (err) return res.json({ success: false, err });
+            res
+              .status(200)
+              .json({ success: true, cart: user.cart, cartDetail: [] });
+          }
+        );
+      });
+    }
+  );
+});
+
+router.get('/getHistory', auth, (req, res) => {
+  User.findOne({ _id: req.user._id }, (err, doc) => {
+    let history = doc.history;
+    if (err) return res.status(400).send(err);
+    return res.status(200).json({ success: true, history });
   });
 });
 
